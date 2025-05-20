@@ -1,6 +1,6 @@
 module github.com/avilevy18/logs-serializer
 
-go 1.25
+go 1.24
 
 require (
 	cloud.google.com/go/logging v1.13.0
