@@ -78,7 +78,7 @@ func (f *fakeLoggingServiceServer) WriteLogEntries(
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("writing to: %s.json")
+	fmt.Printf("writing to: %s.json", fileId.String())
 	err = os.WriteFile(fmt.Sprintf("%s.json", fileId.String()), b, 0644)
 	if err != nil {
 		return nil, err
