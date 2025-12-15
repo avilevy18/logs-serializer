@@ -2,27 +2,27 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
 	"net"
-	"os"
 	"strings"
 	"sync"
 
 	logpb "cloud.google.com/go/logging/apiv2/loggingpb"
+	metricpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
+	"github.com/avilevy/logs-serializer/logs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 type LogsTestServer struct {
-	lis net.Listener
-	srv *grpc.Server
-	// Endpoint where the gRPC server is listening
+	lis                     net.Listener
+	srv                     *grpc.Server
 	Endpoint                string
 	userAgent               string
 	writeLogEntriesRequests []*logpb.WriteLogEntriesRequest
 	mu                      sync.Mutex
+	logger                  logs.StructuredLogger
 }
 
 func (l *LogsTestServer) Shutdown() {
@@ -66,28 +66,27 @@ type fakeLoggingServiceServer struct {
 }
 
 func (f *fakeLoggingServiceServer) WriteLogEntries(
-		ctx context.Context,
-		request *logpb.WriteLogEntriesRequest,
+	ctx context.Context,
+	request *logpb.WriteLogEntriesRequest,
 ) (*logpb.WriteLogEntriesResponse, error) {
-	b, err := json.Marshal(request)
-	if err != nil {
-		fmt.Println(err)
-		return &logpb.WriteLogEntriesResponse{}, nil
-	}
-	fileId, err := uuid.NewUUID()
-	if err != nil {
-		return nil, err
-	}
-	fmt.Printf("writing to: %s.json", fileId.String())
-	err = os.WriteFile(fmt.Sprintf("%s.json", fileId.String()), b, 0644)
-	if err != nil {
-		return nil, err
-	}
+	md, _ := metadata.FromIncomingContext(ctx)
+	f.logsTestServer.logger.Infow("received log", "request", request, "metadata", md)
 	f.logsTestServer.appendWriteLogEntriesRequest(ctx, request)
 	return &logpb.WriteLogEntriesResponse{}, nil
 }
 
-func NewLoggingTestServer() (*LogsTestServer, error) {
+func NewLoggingTestServer(printToStdout bool) (*LogsTestServer, error) {
+	var logger logs.StructuredLogger
+	var err error
+	if printToStdout {
+		logger = logs.NewStdoutLogger()
+	} else {
+		logger, err = logs.NewFileLogger("log")
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	srv := grpc.NewServer()
 	lis, err := net.Listen("tcp", "localhost:18888")
 	if err != nil {
@@ -97,10 +96,101 @@ func NewLoggingTestServer() (*LogsTestServer, error) {
 		Endpoint: lis.Addr().String(),
 		lis:      lis,
 		srv:      srv,
+		logger:   logger,
 	}
 	logpb.RegisterLoggingServiceV2Server(
 		srv,
 		&fakeLoggingServiceServer{logsTestServer: testServer},
+	)
+
+	return testServer, nil
+}
+
+type MetricTestServer struct {
+	lis                      net.Listener
+	srv                      *grpc.Server
+	Endpoint                 string
+	userAgent                string
+	createTimeSeriesRequests []*metricpb.CreateTimeSeriesRequest
+	mu                       sync.Mutex
+	logger                   logs.StructuredLogger
+}
+
+func (m *MetricTestServer) Shutdown() {
+	m.srv.GracefulStop()
+}
+
+func (m *MetricTestServer) Serve() {
+	//nolint:errcheck
+	m.srv.Serve(m.lis)
+}
+
+func (m *MetricTestServer) CreateTimeSeriesRequests() []*metricpb.CreateTimeSeriesRequest {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	reqs := m.createTimeSeriesRequests
+	m.createTimeSeriesRequests = nil
+	return reqs
+}
+
+// Pops out the UserAgent from the most recent CreateTimeSeries.
+func (m *MetricTestServer) UserAgent() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ua := m.userAgent
+	m.userAgent = ""
+	return ua
+}
+
+func (m *MetricTestServer) appendCreateTimeSeriesRequest(ctx context.Context, req *metricpb.CreateTimeSeriesRequest) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.createTimeSeriesRequests = append(m.createTimeSeriesRequests, req)
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		m.userAgent = strings.Join(md.Get("User-Agent"), ";")
+	}
+}
+
+type fakeMetricServiceServer struct {
+	metricpb.UnimplementedMetricServiceServer
+	metricTestServer *MetricTestServer
+}
+
+func (f *fakeMetricServiceServer) CreateTimeSeries(
+	ctx context.Context,
+	request *metricpb.CreateTimeSeriesRequest,
+) (*emptypb.Empty, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	f.metricTestServer.logger.Infow("received metric", "request", request, "metadata", md)
+	f.metricTestServer.appendCreateTimeSeriesRequest(ctx, request)
+	return &emptypb.Empty{}, nil
+}
+
+func NewMetricTestServer(printToStdout bool) (*MetricTestServer, error) {
+	var logger logs.StructuredLogger
+	var err error
+	if printToStdout {
+		logger = logs.NewStdoutLogger()
+	} else {
+		logger, err = logs.NewFileLogger("metric")
+		if err != nil {
+			return nil, err
+		}
+	}
+	srv := grpc.NewServer()
+	lis, err := net.Listen("tcp", "localhost:18889")
+	if err != nil {
+		return nil, err
+	}
+	testServer := &MetricTestServer{
+		Endpoint: lis.Addr().String(),
+		lis:      lis,
+		srv:      srv,
+		logger:   logger,
+	}
+	metricpb.RegisterMetricServiceServer(
+		srv,
+		&fakeMetricServiceServer{metricTestServer: testServer},
 	)
 
 	return testServer, nil
