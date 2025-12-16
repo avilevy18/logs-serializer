@@ -1,0 +1,26 @@
+services:
+  logs-serializer:
+    hostname: serializer-host
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    entrypoint: /logs-serializer
+    command: [ "--metrics", "--stdout", "--host=0.0.0.0", "--metrics-port=18889" ]
+    ports:
+    - "18889:18889"
+    networks:
+    - otel-network
+
+  otel-collector:
+    image: us-docker.pkg.dev/cloud-ops-agents-artifacts/google-cloud-opentelemetry-collector/otelcol-google:latest
+    command: [ "--config=/etc/otel-config.yaml" ]
+    volumes:
+    - ./otel-config.yaml:/etc/otel-config.yaml
+    networks:
+    - otel-network
+    environment:
+    - METRICS_ENDPOINT=serializer-host
+
+networks:
+  otel-network:
+    driver: bridge

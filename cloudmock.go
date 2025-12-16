@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"strings"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	logpb "cloud.google.com/go/logging/apiv2/loggingpb"
 	metricpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
 	"github.com/avilevy18/logs-serializer/logs"
+	"google.golang.org/genproto/googleapis/api/metric"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -29,8 +31,9 @@ func (l *LogsTestServer) Shutdown() {
 }
 
 func (l *LogsTestServer) Serve() {
-	//nolint:errcheck
-	l.srv.Serve(l.lis)
+	if err := l.srv.Serve(l.lis); err != nil {
+		l.logger.Errorw("logs server failed to serve", "error", err)
+	}
 }
 
 func (l *LogsTestServer) CreateWriteLogEntriesRequests() []*logpb.WriteLogEntriesRequest {
@@ -74,7 +77,7 @@ func (f *fakeLoggingServiceServer) WriteLogEntries(
 	return &logpb.WriteLogEntriesResponse{}, nil
 }
 
-func NewLoggingTestServer(stdout bool, path string) (*LogsTestServer, error) {
+func NewLoggingTestServer(stdout bool, path, host string, port int) (*LogsTestServer, error) {
 	var logger logs.StructuredLogger
 	var err error
 	if stdout {
@@ -87,7 +90,8 @@ func NewLoggingTestServer(stdout bool, path string) (*LogsTestServer, error) {
 	}
 
 	srv := grpc.NewServer()
-	lis, err := net.Listen("tcp", "localhost:18888")
+	addr := fmt.Sprintf("%s:%d", host, port)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
@@ -106,13 +110,14 @@ func NewLoggingTestServer(stdout bool, path string) (*LogsTestServer, error) {
 }
 
 type MetricTestServer struct {
-	lis                      net.Listener
-	srv                      *grpc.Server
-	Endpoint                 string
-	userAgent                string
-	createTimeSeriesRequests []*metricpb.CreateTimeSeriesRequest
-	mu                       sync.Mutex
-	logger                   logs.StructuredLogger
+	lis                            net.Listener
+	srv                            *grpc.Server
+	Endpoint                       string
+	userAgent                      string
+	createTimeSeriesRequests       []*metricpb.CreateTimeSeriesRequest
+	createMetricDescriptorRequests []*metricpb.CreateMetricDescriptorRequest
+	mu                             sync.Mutex
+	logger                         logs.StructuredLogger
 }
 
 func (m *MetricTestServer) Shutdown() {
@@ -120,8 +125,9 @@ func (m *MetricTestServer) Shutdown() {
 }
 
 func (m *MetricTestServer) Serve() {
-	//nolint:errcheck
-	m.srv.Serve(m.lis)
+	if err := m.srv.Serve(m.lis); err != nil {
+		m.logger.Errorw("metrics server failed to serve", "error", err)
+	}
 }
 
 func (m *MetricTestServer) CreateTimeSeriesRequests() []*metricpb.CreateTimeSeriesRequest {
@@ -150,6 +156,15 @@ func (m *MetricTestServer) appendCreateTimeSeriesRequest(ctx context.Context, re
 	}
 }
 
+func (m *MetricTestServer) appendCreateMetricDescriptorRequest(ctx context.Context, req *metricpb.CreateMetricDescriptorRequest) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.createMetricDescriptorRequests = append(m.createMetricDescriptorRequests, req)
+	if md, ok := metadata.FromIncomingContext(ctx); ok {
+		m.userAgent = strings.Join(md.Get("User-Agent"), ";")
+	}
+}
+
 type fakeMetricServiceServer struct {
 	metricpb.UnimplementedMetricServiceServer
 	metricTestServer *MetricTestServer
@@ -165,7 +180,17 @@ func (f *fakeMetricServiceServer) CreateTimeSeries(
 	return &emptypb.Empty{}, nil
 }
 
-func NewMetricTestServer(stdout bool, path string) (*MetricTestServer, error) {
+func (f *fakeMetricServiceServer) CreateMetricDescriptor(
+	ctx context.Context,
+	request *metricpb.CreateMetricDescriptorRequest,
+) (*metric.MetricDescriptor, error) {
+	md, _ := metadata.FromIncomingContext(ctx)
+	f.metricTestServer.logger.Infow("received metric descriptor", "request", request, "metadata", md)
+	f.metricTestServer.appendCreateMetricDescriptorRequest(ctx, request)
+	return &metric.MetricDescriptor{}, nil
+}
+
+func NewMetricTestServer(stdout bool, path, host string, port int) (*MetricTestServer, error) {
 	var logger logs.StructuredLogger
 	var err error
 	if stdout {
@@ -177,7 +202,8 @@ func NewMetricTestServer(stdout bool, path string) (*MetricTestServer, error) {
 		}
 	}
 	srv := grpc.NewServer()
-	lis, err := net.Listen("tcp", "localhost:18889")
+	addr := fmt.Sprintf("%s:%d", host, port)
+	lis, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}

@@ -1,4 +1,4 @@
-FROM golang:2.24
+FROM golang:1.24
 
 WORKDIR /app
 
@@ -9,6 +9,4 @@ COPY . .
 
 RUN go build -o /logs-serializer
 
-EXPOSE 18888 18889
-
-CMD [ "/logs-serializer" ]
+ENTRYPOINT [ "/logs-serializer" ]

@@ -3,7 +3,7 @@ steps:
   args:
   - 'build'
   - '-t'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/logs-serializer/logs-serializer:latest'
+  - 'us-docker.pkg.dev/$PROJECT_ID/logs-serializer/logs-serializer:latest'
   - '.'
 images:
-- 'us-central1-docker.pkg.dev/$PROJECT_ID/logs-serializer/logs-serializer:latest'
+- 'us-docker.pkg.dev/$PROJECT_ID/logs-serializer/logs-serializer:latest'

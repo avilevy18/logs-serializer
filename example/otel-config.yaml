@@ -1,0 +1,29 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+exporters:
+  debug:
+    verbosity: detailed
+  googlecloud:
+    project: "test-project"
+    metric:
+      endpoint: "${METRICS_ENDPOINT}:18889"
+      use_insecure: true
+
+service:
+  pipelines:
+    metrics:
+      receivers: [ otlp ]
+      exporters: [ googlecloud ]
+  telemetry:
+    metrics:
+      readers:
+      - periodic:
+          exporter:
+            otlp:
+              protocol: grpc
+              endpoint: 0.0.0.0:4317
+              insecure: true

@@ -34,3 +34,16 @@ go run . --logs --stdout
 ```bash
 go run . --metrics --path /path/to/logs
 ```
+
+### Docker Compose
+
+To run the logs serializer with an OpenTelemetry collector, you can use the
+provided `docker-compose.yaml` file in the `example` directory. This will build
+the logs serializer from the Dockerfile and run it with the OpenTelemetry
+collector.
+
+**From the `example` directory, run:**
+
+```bash
+docker-compose up --build
+```
