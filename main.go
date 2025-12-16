@@ -8,13 +8,14 @@ import (
 
 func main() {
 	stdout := flag.Bool("stdout", false, "print logs and metrics to standard out")
-	logs := flag.Bool("logs", false, "run only the logs server")
-	metrics := flag.Bool("metrics", false, "run only the metrics server")
-	all := flag.Bool("all", true, "run both servers")
+	logsFlag := flag.Bool("logs", false, "run only the logs server")
+	metricsFlag := flag.Bool("metrics", false, "run only the metrics server")
+	allFlag := flag.Bool("all", true, "run both servers")
+	path := flag.String("path", "/tmp/log-serializer", "the path to write the files to")
 	flag.Parse()
 
-	if *all || *logs {
-		logsServer, err := NewLoggingTestServer(*stdout)
+	if *allFlag || *logsFlag {
+		logsServer, err := NewLoggingTestServer(*stdout, *path)
 		if err != nil {
 			panic(err)
 		}
@@ -25,8 +26,8 @@ func main() {
 		defer logsServer.Shutdown()
 	}
 
-	if *all || *metrics {
-		metricsServer, err := NewMetricTestServer(*stdout)
+	if *allFlag || *metricsFlag {
+		metricsServer, err := NewMetricTestServer(*stdout, *path)
 		if err != nil {
 			panic(err)
 		}

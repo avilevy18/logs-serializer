@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -65,14 +66,18 @@ func newZapLogger(file string) (*ZapStructuredLogger, error) {
 	return &ZapStructuredLogger{logger: logger.Sugar()}, nil
 }
 
-func NewFileLogger(prefix string) (*ZapStructuredLogger, error) {
+func NewFileLogger(path, prefix string) (*ZapStructuredLogger, error) {
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return nil, fmt.Errorf("could not create directory: %w", err)
+	}
 	fileId, err := uuid.NewUUID()
 	if err != nil {
 		return nil, fmt.Errorf("could not create UUID: %w", err)
 	}
 	fileName := fmt.Sprintf("%s-%s.json", prefix, fileId.String())
-	fmt.Printf("writing to: %s\n", fileName)
-	return newZapLogger(fileName)
+	filePath := filepath.Join(path, fileName)
+	fmt.Printf("writing to: %s\n", filePath)
+	return newZapLogger(filePath)
 }
 
 func (f ZapStructuredLogger) Infof(format string, v ...any) {

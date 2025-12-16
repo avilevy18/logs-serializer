@@ -2,14 +2,13 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"strings"
 	"sync"
 
 	logpb "cloud.google.com/go/logging/apiv2/loggingpb"
 	metricpb "cloud.google.com/go/monitoring/apiv3/v2/monitoringpb"
-	"github.com/avilevy/logs-serializer/logs"
+	"github.com/avilevy18/logs-serializer/logs"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -75,13 +74,13 @@ func (f *fakeLoggingServiceServer) WriteLogEntries(
 	return &logpb.WriteLogEntriesResponse{}, nil
 }
 
-func NewLoggingTestServer(printToStdout bool) (*LogsTestServer, error) {
+func NewLoggingTestServer(stdout bool, path string) (*LogsTestServer, error) {
 	var logger logs.StructuredLogger
 	var err error
-	if printToStdout {
+	if stdout {
 		logger = logs.NewStdoutLogger()
 	} else {
-		logger, err = logs.NewFileLogger("log")
+		logger, err = logs.NewFileLogger(path, "log")
 		if err != nil {
 			return nil, err
 		}
@@ -166,13 +165,13 @@ func (f *fakeMetricServiceServer) CreateTimeSeries(
 	return &emptypb.Empty{}, nil
 }
 
-func NewMetricTestServer(printToStdout bool) (*MetricTestServer, error) {
+func NewMetricTestServer(stdout bool, path string) (*MetricTestServer, error) {
 	var logger logs.StructuredLogger
 	var err error
-	if printToStdout {
+	if stdout {
 		logger = logs.NewStdoutLogger()
 	} else {
-		logger, err = logs.NewFileLogger("metric")
+		logger, err = logs.NewFileLogger(path, "metric")
 		if err != nil {
 			return nil, err
 		}
