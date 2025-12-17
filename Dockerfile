@@ -9,4 +9,6 @@ COPY . .
 
 RUN go build -o /logs-serializer
 
+RUN chmod +x /logs-serializer
+
 ENTRYPOINT [ "/logs-serializer" ]
